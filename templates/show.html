@@ -1,0 +1,39 @@
+<div class="span10 show" id="<%= show.id %>">
+  <p><img src="https://image.tmdb.org/t/p/w600/<%= show.poster %>" class="img-polaroid" height="180" width="180" id="art" style="float: left; margin-right: 15px;"></p>
+  <h2 style="margin: 0px;"><span id="title"><%= show.name %></span></h2>
+      <div class="progress">
+        <div class="bar bar-success" style="width: <%= show.state.done %>%;"></div>
+        <div class="bar bar-warning" style="width: <%= show.state.getting %>%;"></div>
+        <div class="bar bar-danger" style="width: <%= show.state.other %>%;"></div>
+      </div>
+  <p class="lead">
+    <div class="btn-group">
+      <a class="btn dropdown-toggle" data-toggle="dropdown" href="#">
+        Seasons (<%= show.num_seasons %>)
+        <span class="caret"></span>
+      </a>
+
+      <ul class="dropdown-menu">
+        <% _.each(show.seasons, function (el, i) { %>
+          <li><a class="season-select" season-id="<%= el %>" show-id="<%= show.id %>">Season <%= el %></a></li>
+        <% }) %>
+      </ul>
+    </div>
+    <style>
+      .table th {
+        font-weight: normal;
+      }
+    </style>
+    <table id="episode-list" class="table" style="float: right; width: 72%; font-weight: normal">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Name</th>
+          <th>Controls</th>
+        </tr>
+      </thead>
+      <tbody id="active-season-episode-list">
+      </tbody>
+    </table>
+  </p>
+</div>
