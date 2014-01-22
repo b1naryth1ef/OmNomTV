@@ -6,3 +6,5 @@ OmNom allows you to easily add and track TV shows, and download any episode. On 
 Wow!
 
 (still in dev cuz yolo)
+
+![Screenshot1](http://i.imgur.com/9tXYvrC.png)
