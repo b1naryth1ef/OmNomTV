@@ -1,7 +1,10 @@
 from flask import Flask, render_template, request, jsonify
 from database import *
+from api import getTMDBAPI
 
 app = Flask(__name__)
+
+tmdb = getTMDBAPI()
 
 @app.route("/")
 def index():
@@ -19,6 +22,13 @@ def api_template():
             "error": "Invalid Template Name (%s)" % e
         })
 
+@app.route("/api/search")
+def api_search():
+    query = request.values.get("query", "")
+    if not query:
+        return jsonify({"error": "No Search Query!"})
+    return jsonify(tmdb.searchTV(query))
+
 # list, get, delete
 @app.route("/api/show/<action>")
 def api_shows(action=None):
@@ -29,6 +39,22 @@ def api_shows(action=None):
         for s in Show.select():
             result['shows'].append(s.json())
         return jsonify(result)
+
+    if action == "add":
+        Show.new(request.values.get("show"))
+        return jsonify({
+            "success": True
+        })
+
+    if action == "delete":
+        try:
+            # TODO: delete data
+            s = Show.select().where(Show.extid == request.values.get("show")).get()
+            Episode.delete().where(Episode.show == s).execute()
+            Show.delete().where(Show.extid == request.values.get("show")).execute()
+        except Exception as e:
+            return jsonify({"error": "Error deleting show: %s" % e})
+        return jsonify({"success": True})
 
 @app.route("/api/season/<show>/<season>/<action>")
 def api_seasons(show=None, season=None, action=None):
@@ -60,13 +86,26 @@ def api_episode(action=None):
 
     if action == "get":
         if episode.getState() != "none":
-            return jsonify({
-                "error": "Cannot get that episode right now!"
-            })
-        episode.queue()
-        return jsonify({
-            "success": True
-        })
+            return jsonify({"error": "Cannot get that episode right now!"})
+        try:
+            episode.queue()
+        except Exception as e:
+            return jsonify({"error": "Error queueing the episode! (%s)" % e})
+        return jsonify({"success": True})
+
+    # Stop and delete the torrent including local data
+    if action == "delete":
+        try:
+            episode.remove_torrent(delete_data=True)
+            episode.torrentid = ""
+            if episode.path:
+                # In this case, we need to remove this data
+                pass
+            episode.save()
+        except Exception as e:
+            return jsonify({"error": "Error deleting torrent: %s" % e})
+        return jsonify({"success": True})
+
 
 if __name__ == '__main__':
     app.run(host="localhost", debug=True)

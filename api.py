@@ -37,11 +37,13 @@ class TMDB(object):
         return self.get("tv/%s/season/%s/images" % (show, season))
 
     def getEpisode(self, show, season, ep):
-        print "tv/%s/season/%s/episode/%s" % (show, season, ep)
         return self.get("tv/%s/season/%s/episode/%s" % (show, season, ep))
 
     def getEpisodeImages(self, show, season, ep):
         return self.get("tv/%s/season/%s/episode/%s/images" % (show, season, ep))
+
+def getTMDBAPI():
+    return TMDB(API_KEY)
 
 class PirateBay(object):
     OK_USERS = ['eztv']
@@ -50,8 +52,6 @@ class PirateBay(object):
         self.t = TPB('https://thepiratebay.org')
 
     def find_episode(self, show, season, episode):
-        print "%02d" % (1,)
-        print '%s S%02dE%02d' % (show.name, season, episode)
         s = self.t.search('%s S%02dE%02d' % (show.name, season, episode), category=CATEGORIES.VIDEO.TV_SHOWS)
         s.order(ORDERS.SEEDERS.DES)
 
@@ -63,4 +63,3 @@ class PirateBay(object):
                 return item
 
         return None
-

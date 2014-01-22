@@ -1,0 +1,9 @@
+<div class="span10 search-show" id="<%= show.id %>" style="margin-bottom: 15px; margin-left: 0px;">
+  <p>
+    <% if (show.poster_path) { %>
+        <img src="https://image.tmdb.org/t/p/w600/<%= show.poster_path %>" class="img-polaroid" height="120" width="120" id="art" style="float: left; margin-right: 15px;">
+    <% } %>
+    </p>
+  <h2 style="margin: 0px;"><span id="title"><%= show.name %></span></h2>
+    <a href="#" class="btn btn-small btn-success search-add"><i class="icon-plus icon-white"></i></a>  
+</div>

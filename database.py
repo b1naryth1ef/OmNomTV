@@ -4,7 +4,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from api import TMDB, PirateBay
 from settings import API_KEY
-import json
+import json, os, math, thread, time
 
 db = SqliteDatabase('data.db', threadlocals=True)
 api = TMDB(API_KEY)
@@ -15,6 +15,10 @@ trans = Client("localhost", port=9090)
 EXTS = ["mp4", "mkv", "avi", "mov"]
 
 airdateparse = lambda ad: datetime.strptime(ad, "%Y-%m-%d")
+
+def percent(am, total):
+    if not am: return 0
+    return int(100.0 / ((total * 1.0) / am))
 
 class BaseModel(Model):
     class Meta:
@@ -75,20 +79,15 @@ class Show(BaseModel):
             "name": self.name,
             "seasons": self.getSeasons(),
             "num_seasons": len(self.getSeasons()),
-            "state": {
-                "done": 60,
-                "getting": 15,
-                "other": 0,
-            }
+            "state": self.stats()
         }
 
     def getEpisodes(self, season=None):
-        print Episode.select().get().seasonid
-        if season == None:
+        if season is None:
             return Episode.select().where(Episode.show == self)
         else:
             return Episode.select().where((Episode.show == self) & (Episode.seasonid == season))
-        
+
     def index(self):
         show = api.getShow(self.extid)
         for season in show['seasons']:
@@ -99,9 +98,29 @@ class Show(BaseModel):
                 print "\tIndexing episode %s" % ep['episode_number']
                 q = Episode.getByEpisodeID(show, ep['episode_number'])
                 if not q:
-                    Episode.new(self, season_data, ep)
+                    e = Episode.new(self, season_data, ep)
 
+    def stats(self):
+        have, getting, none, unavail = 0, 0, 0, 0
 
+        total = self.getEpisodes().count()
+        print total
+        for episode in self.getEpisodes():
+            if episode.getState() == "getting":
+                getting += 1
+            elif episode.getState() == "have":
+                have += 1
+            elif episode.getState() == "unavail":
+                unavail += 1
+            else: none += 1
+        print total, have, getting, none, unavail
+
+        return {
+            "have": percent(have, total),
+            "getting": percent(getting, total),
+            "none": percent(none, total),
+            "unavail": percent(unavail, total)
+        }
 
 class Episode(BaseModel):
     show = ForeignKeyField(Show)
@@ -112,8 +131,9 @@ class Episode(BaseModel):
     image = CharField(null=True)
     airdate = DateTimeField(null=True)
     path = CharField(default="")
-
-    tran_id = IntegerField(default=-1)
+    torrentid = CharField(default="")
+    magnet = CharField(default="")
+    track = BooleanField(default=False)
 
     @classmethod
     def getByEpisodeID(cls, show, id):
@@ -131,65 +151,80 @@ class Episode(BaseModel):
         e.desc = data['overview']
         e.image = data['still_path']
         e.airdate = airdateparse(data['air_date']) if data['air_date'] else None
+
+        if e.airdate and e.airdate > datetime.now():
+            show.shouldTrack(data)
+            e.track = True
         e.save()
         return e
 
-    def queue(self):
-        print "Queueing episode %s" % self.id
+    def pbFind(self):
         ep = pb.find_episode(self.show, self.seasonid, self.episodeid)
         if not ep:
             raise Exception("Error trying to Queue show %s, no TPB link found..." % self.id)
+        self.magnet = ep.magnet_link
+        return ep
+
+    def queue(self):
+        print "Queueing episode %s" % self.id
+        if not self.magnet:
+            ep = self.pbFind()
         for torrent in trans.get_torrents():
-            if torrent.magnetLink == ep.magnet_link:
+            if torrent.magnetLink == self.magnet:
                 print "Already Queued!"
-        t = trans.add_torrent(ep.magnet_link)
-        self.tran_id = t.id
-        self.path = self.getPath()
+                return
+        t = trans.add_torrent(self.magnet)
+        self.torrentid = t.hashString
         self.save()
         return True
 
     def getFile(self):
         results = []
-        for f in trans.get_torrent(self.tran_id).files().values():
+        for f in self.getTorrent().files().values():
             if f['name'][-3:] in EXTS and 'sammple' not in f['name']:
                 results.append(f['name'])
-        
+
         if len(results) == 1:
             return results[0]
         raise Exception("Could not find results for episode %s" % self.id)
 
-    def getPath(self):
-        return trans.get_torrent(self.tran_id).downloadDir
+    def updateStatus(self):
+        if self.torrentid:
+            t = self.getTorrent()
+            if t.doneDate:
+                self.path = os.path.join(t.downloadDir, self.getFile())
 
     def getStatus(self):
-        if self.tran_id == -1:
+        if not self.torrentid:
             return {
                 "done": False,
                 "pc": 0
             }
-        t = trans.get_torrent(self.tran_id)
-        if t.doneDate:
-            return {
-                "done": True,
-                "pc": 100,
-            }
-        else:
-            return {
-                "done": False,
-                "pc": t.percentDone*100
-            }
+
+        t = trans.get_torrent(self.torrentid)
+        return {
+            "done": True if t.doneDate else False,
+            "pc": t.percentDone*100,
+        }
 
     def getAPI(self):
         return api.getEpisode(self.show.extid, self.seasonid, self.episodeid)
 
+    def getTorrent(self):
+        return trans.get_torrent(self.torrentid)
+
     def getState(self):
-        if self.tran_id != -1 and not self.path:
+        print self.path
+        if self.torrentid and not self.path:
             return "getting"
-        elif self.tran_id != -1:
+        elif self.torrentid:
             return "have"
         elif not self.airdate or self.airdate > datetime.now():
             return "unavail"
         return "none"
+
+    def remove_torrent(self, **kwargs):
+        trans.remove_torrent(self.torrentid, **kwargs)
 
     def json(self):
         data = {
@@ -204,55 +239,41 @@ class Episode(BaseModel):
 
         return data
 
-def schedule():
-    return
-    for ep in Episode.select().where(Episode.path == ""):
-        if airdateparse(ep.getAPI()['air_date']) <= datetime.now():
-            if ep.tran_id != -1: print ep.getFile()
-            try:ep.queue()
-            except Exception as e: print e
+def track_new_episodes():
+    while True:
+        for episode in Episode.select().where(
+                (Episode.airdate < datetime.now()-relativedelta(hours=5)) & (Episode.track == True)):
+            episode.queue()
 
-def check_show(show):
-    show_entry = Show.select().where(Show.extid == show['id']).get()
+# def schedule():
+#     # Update Shows
+#     while True:
+#         for episode in Episode.select().where(Episode.need_index == True):
+#             print "Indexing Pirate Bay Magnet Link"
+#             for episode in show.getEpisodes():
+#                 try: episode.pbFind()
+#                 except: pass
+#             show.need_index = False
+#             show.save()
 
-    show_data = {
-        "seasons": []
-    }
+#         time.sleep(60*30)
 
-    # Locally index the episodes
-    for season in show['seasons']:
-        season_data = api.getSeason(show_entry.extid, season['season_number'])
-
-        episodes = []
-
-        for ep in season_data['episodes']:
-            print show_entry.shouldTrack(ep)
-            q = Episode.getByEpisodeID(show, ep['episode_number'])
-            print ep['air_date']
-            if q:
-                ep['path'] = q.getPath()
-                ep['status'] = q.getStatus()
-            elif show_entry.shouldTrack(ep):
-                e = Episode.new(show_entry, season_data, ep)
-                ep['path'] = ""
-                ep['status'] = e.getStatus()
-            else:
-                ep['path'] = ""
-                ep['status'] = ""
-            episodes.append(ep)
-
-        season_data['episodes'] = episodes
-        show_data['seasons'].append(season_data)
-
-    show.update(show_data)
-    return show
+# def schedule():
+#     return
+#     for ep in Episode.select().where(Episode.path == ""):
+#         if airdateparse(ep.getAPI()['air_date']) <= datetime.now():
+#             if ep.tran_id != -1: print ep.getFile()
+#             try: ep.queue()
+#             except Exception as e: print e
 
 def init_db():
     Show.create_table()
     Episode.create_table()
     Show.new("10283")
+    Show.new("1428")
 
 if __name__ == "__main__":
     import os
     os.popen("rm data.db")
     init_db()
+else: thread.start_new_thread(track_new_episodes, ())

@@ -7,9 +7,10 @@ Show = {
     num_seasons: total # of seasons,
     seasons: [... season numbers],
     state: {
-        done: %,
+        have: %,
         getting: %,
-        other: %
+        other: %,
+        unavail: %
     }
 }
 

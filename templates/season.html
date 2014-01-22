@@ -4,12 +4,12 @@
   <th><a class="pop" data-toggle="popover" title="" data-content="<%= el.desc %>" data-original-title="<%= el.name %> Overview"><%= el.name %></a></th>
   <th show="<%= season.show %>" episode="<%= el.id %>" season="<%= season.id %>">
     <% if (el.state == "none") { %>
-      <a class="btn btn-small btn-success episode-action" type="button" act="start"><i class="icon-arrow-down icon-white"></i></a>  
-    <% } else if (el.state == "getting") { %>
-      <a class="btn btn-small btn-primary episode-action" type="button" act="cancel"><i class="icon-stop icon-white"></i></a>
+      <a class="btn btn-small btn-success episode-action" type="button" act="get"><i class="icon-arrow-down icon-white"></i></a>  
+    <% } else if ((el.state == "getting") || (el.state == "have")) { %>
+      <a class="btn btn-small btn-danger episode-action" type="button" act="delete"><i class="icon-remove-sign icon-white"></i></a>
     <% } else if (el.state == "have") { %>
       <a class="btn btn-small btn-primary episode-action" type="button" act="play"><i class="icon-play icon-white"></i></a>
-      <a class="btn btn-small btn-danger episode-action" type="button" act="remove"><i class="icon-remove-sign icon-white"></i></a>
+      <a class="btn btn-small btn-success episode-action" type="button" act="dl"><i class="icon-download icon-white"></i></a>
     <% } else if (el.state == "unavail") { %>
       <i>Episode airs on <%= moment(el.airdate).format('LL') %></i>
     <% } %>
