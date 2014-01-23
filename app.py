@@ -1,6 +1,9 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, make_response
 from database import *
 from api import getTMDBAPI
+
+# Wtf python has this library?
+import mimetypes
 
 app = Flask(__name__)
 
@@ -105,6 +108,18 @@ def api_episode(action=None):
         except Exception as e:
             return jsonify({"error": "Error deleting torrent: %s" % e})
         return jsonify({"success": True})
+        #return make_response(open(episode.path).read())
+
+@app.route("/file/<eid>/<mode>/<junk>")
+@app.route("/file/<eid>/<mode>")
+def app_file(eid, mode, junk=None):
+    episode = Episode.select().where(Episode.id == eid).get()
+    res = make_response(open(episode.path).read())
+    if mode == "dl":
+        res.content_type = "application/octet-stream"
+    elif mode == "play":
+        res.content_type, _ = mimetypes.guess_type(episode.path)
+    return res
 
 
 if __name__ == '__main__':

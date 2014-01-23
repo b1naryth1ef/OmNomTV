@@ -159,7 +159,7 @@ class Episode(BaseModel):
         return e
 
     def pbFind(self):
-        ep = pb.find_episode(self.show, self.seasonid, self.episodeid)
+        ep = pb.find_episode(self)
         if not ep:
             raise Exception("Error trying to Queue show %s, no TPB link found..." % self.id)
         self.magnet = ep.magnet_link
@@ -193,19 +193,15 @@ class Episode(BaseModel):
             t = self.getTorrent()
             if t.doneDate:
                 self.path = os.path.join(t.downloadDir, self.getFile())
+                self.save()
 
     def getStatus(self):
+        self.updateStatus()
         if not self.torrentid:
-            return {
-                "done": False,
-                "pc": 0
-            }
+            return 0
 
         t = trans.get_torrent(self.torrentid)
-        return {
-            "done": True if t.doneDate else False,
-            "pc": t.percentDone*100,
-        }
+        return t.percentDone*100
 
     def getAPI(self):
         return api.getEpisode(self.show.extid, self.seasonid, self.episodeid)
@@ -214,7 +210,6 @@ class Episode(BaseModel):
         return trans.get_torrent(self.torrentid)
 
     def getState(self):
-        print self.path
         if self.torrentid and not self.path:
             return "getting"
         elif self.torrentid:
@@ -234,7 +229,10 @@ class Episode(BaseModel):
             "desc": self.desc,
             "season": self.seasonid,
             "airdate": self.airdate,
-            "state": self.getState()
+            "state": self.getState(),
+            "status": self.getStatus(),
+            "path": "/file/%s/" % self.id,
+            "fname": os.path.split(self.path)[-1] if self.path else ""
         }
 
         return data
@@ -276,4 +274,4 @@ if __name__ == "__main__":
     import os
     os.popen("rm data.db")
     init_db()
-else: thread.start_new_thread(track_new_episodes, ())
+#else: thread.start_new_thread(track_new_episodes, ())

@@ -1,7 +1,9 @@
-<div class="span10 search-show" id="<%= show.id %>" style="margin-bottom: 15px; margin-left: 0px;">
+<div class="search-show" id="<%= show.id %>" style="margin-bottom: 15px; margin-left: 0px;">
   <p>
     <% if (show.poster_path) { %>
-        <img src="https://image.tmdb.org/t/p/w600/<%= show.poster_path %>" class="img-polaroid" height="120" width="120" id="art" style="float: left; margin-right: 15px;">
+        <img src="https://image.tmdb.org/t/p/w600/<%= show.poster_path %>" class="img-polaroid" height="120" width="120" id="art">
+    <% } else { %>
+        <img src="http://upload.wikimedia.org/wikipedia/commons/d/d2/Question_mark.svg" class="img-polaroid" height="100" width="100" id="art">
     <% } %>
     </p>
   <h2 style="margin: 0px;"><span id="title"><%= show.name %></span></h2>

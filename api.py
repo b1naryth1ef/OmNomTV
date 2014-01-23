@@ -51,15 +51,32 @@ class PirateBay(object):
     def __init__(self):
         self.t = TPB('https://thepiratebay.org')
 
-    def find_episode(self, show, season, episode):
-        s = self.t.search('%s S%02dE%02d' % (show.name, season, episode), category=CATEGORIES.VIDEO.TV_SHOWS)
+    # This is the generic "Name S00E00" format seen on TPB
+    def gen_query_generic(self, ep):
+        return '%s S%02dE%02d' % (ep.show.name, ep.seasonid, ep.episodeid)
+
+    # This format should help with episodes that don't really fall under S00E00
+    def gen_query_simple(self, ep):
+        return '%s %s' % (ep.show.name, ep.name)
+
+    def find_episode(self, episode):
+        item = None
+        for gen in [self.gen_query_generic, self.gen_query_simple]:
+            item = self.search(gen(episode))
+            if item:
+                return item
+        return None
+
+    def search(self, query):
+        print "Searching for %s" % query
+        s = self.t.search(query, category=CATEGORIES.VIDEO.TV_SHOWS)
         s.order(ORDERS.SEEDERS.DES)
 
         for item in s.page(1):
             if item.user in self.OK_USERS:
                 return item
 
-            if item.seeders >= 50:
+            if item.seeders >= 25:
                 return item
 
         return None

@@ -25,5 +25,8 @@ Episode = {
     name: episode name,
     desc: episode desc,
     airdate: day of airing,
-    state: ['none', 'have', 'getting', 'unavail']
+    state: ['none', 'have', 'getting', 'unavail'],
+    status: % done,
+    path: some url,
+    fname: file name
 }

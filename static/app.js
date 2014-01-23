@@ -3,7 +3,7 @@ window.CACHE = {
 };
 
 function getTemplate(name) {
-    return window.CACHE.templates[name];
+    return window.CACHE.templates[name] || loadTemplate(name);
 }
 
 function loadTemplate(name) {
@@ -22,6 +22,28 @@ function loadTemplate(name) {
             }
         }
     });
+    return getTemplate(name);
+}
+
+Error = {
+    create: function (msg, type, clear) {
+        type = type || "error";
+        clear = clear || true;
+        var data = getTemplate("error.html")({
+            msg: msg,
+            type: type,
+        });
+
+        if (clear) {
+            Error.clear()
+        }
+
+        $(".errors").append(data)
+    },
+
+    clear: function () {
+        $(".errors").html("")
+    }
 }
 
 function selectSeason(show, season) {
@@ -49,8 +71,9 @@ var CONFIG = {
 };
 
 function handleSearchResults(data) {
+    $(".search-loader").hide();
     if (data.error) {
-        alert(data.error);
+        Error.create(data.error)
         return;
     }
     $("#results").html("");
@@ -82,6 +105,7 @@ function onLoad() {
     loadTemplate("show.html");
     loadTemplate("season.html");
     loadTemplate("search.html");
+    loadTemplate("error.html");
 
     // Add event: Load season
     $("#shows").delegate(".season-select", "click", function (e) {
@@ -99,7 +123,7 @@ function onLoad() {
             },
             success: function(data) {
                 if (data.error) {
-                    alert(data.error);
+                    Error.create(data.error)
                     return;
                 }
                 loadShows();
@@ -115,7 +139,7 @@ function onLoad() {
             },
             success: function (data) {
                 if (data.error) {
-                    alert(data.error);
+                    Error.create(data.error);
                     return;
                 }
                 loadShows();
@@ -139,7 +163,7 @@ function onLoad() {
                 }
 
                 if (data.error) {
-                    alert(data.error);
+                    Error.create(data.error)
                 }
             }
         });
@@ -151,8 +175,11 @@ function onLoad() {
         if (e.keyCode == 13 || (CONFIG.autoSearch && $(this).val().length >= 5)) {
             if ($(this).val() === "") {
                 $("#results").html("");
+                $(".search-info").fadeOut();
                 return;
             }
+            $(".search-info").fadeIn();
+            $(".search-loader").show();
             $.ajax("/api/search", {
                 data: {
                     "query": $(this).val()

@@ -1,18 +1,26 @@
 <% _.each(season.episodes, function(el, i) { %>
 <tr class="episode season-<%= season.id %> episode-<%= el.id %>">
   <th><%= el.id %></th>
-  <th><a class="pop" data-toggle="popover" title="" data-content="<%= el.desc %>" data-original-title="<%= el.name %> Overview"><%= el.name %></a></th>
+  <th><a class="pop" data-toggle="popover" title="" data-content="<%= el.desc %>" data-original-title="<%= el.name %> Overview"><%= el.name %></a>
+    <% if (el.state == "getting") { %>
+      <div class="progress" style="max-width:150px">
+        <div class="bar bar-success" style="width: <%= el.status %>%;"></div>
+      </div>
+    <% } %>
+  </th>
   <th show="<%= season.show %>" episode="<%= el.id %>" season="<%= season.id %>">
     <% if (el.state == "none") { %>
       <a class="btn btn-small btn-success episode-action" type="button" act="get"><i class="icon-arrow-down icon-white"></i></a>  
-    <% } else if ((el.state == "getting") || (el.state == "have")) { %>
+    <% } else if (el.state == "getting") { %>
       <a class="btn btn-small btn-danger episode-action" type="button" act="delete"><i class="icon-remove-sign icon-white"></i></a>
     <% } else if (el.state == "have") { %>
-      <a class="btn btn-small btn-primary episode-action" type="button" act="play"><i class="icon-play icon-white"></i></a>
-      <a class="btn btn-small btn-success episode-action" type="button" act="dl"><i class="icon-download icon-white"></i></a>
+      <a class="btn btn-small btn-danger episode-action" type="button" act="delete"><i class="icon-remove-sign icon-white"></i></a>
+      <a href="<%= el.path %>dl/<%= el.fname %>" class="btn btn-small btn-primary" type="button"><i class="icon-arrow-down icon-white"></i></a>
+      <a href="<%= el.path %>play/<%= el.fname %>" class="btn btn-small btn-success" type="button"><i class="icon-play icon-white"></i></a>
     <% } else if (el.state == "unavail") { %>
       <i>Episode airs on <%= moment(el.airdate).format('LL') %></i>
     <% } %>
+
   </th>
 </tr>
 <% }) %>
