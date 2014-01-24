@@ -1,0 +1,7 @@
+- Allow for torrents to be "completed" but not have a local file
+- Allow for backends to handle URL's and serving content
+- Added client backends for torrent downloaders (rtorrent?)
+- Properly setup the scheduled downloader
+- Have options for marking episodes as watched (and thus removing big green button of swag)
+- Redo frontend to be more dynamic/auto-refresh/swag
+- Fix percentage bars so they don't suck complete dick

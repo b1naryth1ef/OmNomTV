@@ -143,6 +143,7 @@ function onLoad() {
                     return;
                 }
                 loadShows();
+                $(".search-info").fadeOut();
             }
         });
     });

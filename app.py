@@ -1,11 +1,13 @@
 from flask import Flask, render_template, request, jsonify, make_response
 from database import *
 from api import getTMDBAPI
+import logging
 
 # Wtf python has this library?
 import mimetypes
 
 app = Flask(__name__)
+log = logging.getLogger("app")
 
 tmdb = getTMDBAPI()
 
@@ -40,7 +42,7 @@ def api_shows(action=None):
             "shows": []
         }
         for s in Show.select():
-            result['shows'].append(s.json())
+            result['shows'].append(s.dict())
         return jsonify(result)
 
     if action == "add":
@@ -68,7 +70,7 @@ def api_seasons(show=None, season=None, action=None):
         data = {}
         data['id'] = season
         data['show'] = show.extid
-        data['episodes'] = [e.json() for e in episodes]
+        data['episodes'] = [e.dict() for e in episodes]
 
         return jsonify({
             "season": data
@@ -99,7 +101,7 @@ def api_episode(action=None):
     # Stop and delete the torrent including local data
     if action == "delete":
         try:
-            episode.remove_torrent(delete_data=True)
+            episode.rmvTorrent(delete_data=True)
             episode.torrentid = ""
             if episode.path:
                 # In this case, we need to remove this data

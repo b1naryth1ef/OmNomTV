@@ -2,20 +2,24 @@ from peewee import *
 from dateutil import parser
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+from settings import config
+from transmissionrpc import Client
 from api import TMDB, PirateBay
-from settings import API_KEY
-import json, os, math, thread, time
+from fs import EXTS, get_storage_backend, getValidFiles
+import json, os, math, thread, time, logging
 
 db = SqliteDatabase('data.db', threadlocals=True)
-api = TMDB(API_KEY)
+backend = get_storage_backend(db)
+api = TMDB(config["TMDB_API_KEY"])
 pb = PirateBay()
-from transmissionrpc import Client
-trans = Client("localhost", port=9090)
+trans = Client(config['transmission']['host'], config['transmission']['port'])
 
-EXTS = ["mp4", "mkv", "avi", "mov"]
+log = logging.getLogger("database")
 
+# Parses a TMDB API air date
 airdateparse = lambda ad: datetime.strptime(ad, "%Y-%m-%d")
 
+# Percentifies stuff
 def percent(am, total):
     if not am: return 0
     return int(100.0 / ((total * 1.0) / am))
@@ -72,7 +76,7 @@ class Show(BaseModel):
         self.index()
         return self
 
-    def json(self):
+    def dict(self):
         return {
             "id": self.extid,
             "poster": self.poster,
@@ -130,9 +134,9 @@ class Episode(BaseModel):
     desc = CharField()
     image = CharField(null=True)
     airdate = DateTimeField(null=True)
+    completed = DateTimeField(null=True)
     path = CharField(default="")
     torrentid = CharField(default="")
-    magnet = CharField(default="")
     track = BooleanField(default=False)
 
     @classmethod
@@ -143,6 +147,10 @@ class Episode(BaseModel):
 
     @classmethod
     def new(cls, show, season, data):
+        """
+        Creates a new episode based on show, season, and data from the
+        TMDB API.
+        """
         e = cls()
         e.show = show
         e.seasonid = season['season_number']
@@ -158,58 +166,118 @@ class Episode(BaseModel):
         e.save()
         return e
 
-    def pbFind(self):
-        ep = pb.find_episode(self)
-        if not ep:
-            raise Exception("Error trying to Queue show %s, no TPB link found..." % self.id)
-        self.magnet = ep.magnet_link
-        return ep
+    def onFinish(self):
+        """
+        Called when this episodes torrent is finished. This handles storing
+        the file, and setting completed date.
+        """
+        self.path = backend.storeFile(self)
+        self.completed = datetime.now()
+        self.save()
+
+    def findValidTorrent(self):
+        """
+        Attempts to find a torrent using the TPB search API. This abstracts
+        any special search or behaivorial logic to the API, and will either
+        return a torrent object, or none
+        """
+        return pb.find_episode(self)
 
     def queue(self):
-        print "Queueing episode %s" % self.id
-        if not self.magnet:
-            ep = self.pbFind()
+        """
+        Attempts to both find a valid magnet URL using `findValidTorrent`,
+        and queue the torrent within transmission. This will fail if either
+        a torrent magnet URL could not be found, or if the found magnet URL
+        is already queued within transmission.
+
+        (NB: In the future, it might make sense for this to set .torrentid,
+            if the magnet url is already tracked.)
+        """
+
+        log.info("Attempting to queue episode %s for download" % self.id)
+        tpb_torrent = self.findValidTorrent()
+        if not tpb_torrent:
+            raise Exception("Error trying to Queue show %s, no torrent found..." % self.id)
+
         for torrent in trans.get_torrents():
-            if torrent.magnetLink == self.magnet:
-                print "Already Queued!"
-                return
-        t = trans.add_torrent(self.magnet)
+            if torrent.magnetLink == tpb_torrent.magnet_link:
+                raise Exception("Epsiode torrent is already queued! (%s)" % self.id)
+
+        # Queue the torrent and save it's hash
+        t = trans.add_torrent(tpb_torrent.magnet_link)
         self.torrentid = t.hashString
         self.save()
         return True
 
     def getFile(self):
-        results = []
-        for f in self.getTorrent().files().values():
-            if f['name'][-3:] in EXTS and 'sammple' not in f['name']:
-                results.append(f['name'])
+        """
+        Attemps to find a valid video file within the torrent, ignoring
+        files that do not match inside of EXTS, and files that contain
+        "sample" in them. If the number of files found does not equal 1,
+        an exception is thrown.
 
-        if len(results) == 1:
-            return results[0]
-        raise Exception("Could not find results for episode %s" % self.id)
+        (NB: if an extension is longer than 3 characters, this breaks)
+        """
+        results = getValidFiles([i['name'] for i in self.getTorrent().files().values()])
+
+        if len(results) != 1:
+            raise Exception("Could not find file for episode %s (%s)" % (self.id, self.torrentid))
+
+        return results[0]
 
     def updateStatus(self):
+        """
+        Polls for an update from transmission on the state of this torrent,
+        optionally marking it as finished internally and calling `onFinish`
+        """
         if self.torrentid:
             t = self.getTorrent()
-            if t.doneDate:
+
+            # Only matters if we haven't already finished
+            if t.doneDate and not self.path:
                 self.path = os.path.join(t.downloadDir, self.getFile())
+                self.onFinish()
                 self.save()
 
-    def getStatus(self):
+    def getProgress(self):
+        """
+        Returns this torrents download progress if it exists within transmission,
+        otherwise returns 0.
+        """
+        # FIXME: this should be in a scheduled task
         self.updateStatus()
+
         if not self.torrentid:
             return 0
 
-        t = trans.get_torrent(self.torrentid)
-        return t.percentDone*100
+        return self.getTorrent().percentDone * 199
 
     def getAPI(self):
+        """
+        Returns a TMDB data payload for this episode
+        """
         return api.getEpisode(self.show.extid, self.seasonid, self.episodeid)
 
     def getTorrent(self):
+        """
+        Returns the torrent for this episode
+        """
         return trans.get_torrent(self.torrentid)
 
+    def rmvTorrent(self, **kwargs):
+        """
+        Removes this torrent from transmission, with the option of passing
+        kw params to the transmission RPC call.
+
+        (FIXME: For multiple torrent backends, we need to change the way
+            this handles kwargs (e.g remove it))
+        """
+        trans.remove_torrent(self.torrentid, **kwargs)
+
     def getState(self):
+        """
+        Returns the torrents state
+        """
         if self.torrentid and not self.path:
             return "getting"
         elif self.torrentid:
@@ -218,10 +286,11 @@ class Episode(BaseModel):
             return "unavail"
         return "none"
 
-    def remove_torrent(self, **kwargs):
-        trans.remove_torrent(self.torrentid, **kwargs)
-
-    def json(self):
+    def dict(self):
+        """
+        Returns a dictionary that can be passed to the frontend as json,
+        with important attributes attached.
+        """
         data = {
             "sid": self.id,
             "id": self.episodeid,
@@ -230,7 +299,7 @@ class Episode(BaseModel):
             "season": self.seasonid,
             "airdate": self.airdate,
             "state": self.getState(),
-            "status": self.getStatus(),
+            "prog": self.getProgress(),
             "path": "/file/%s/" % self.id,
             "fname": os.path.split(self.path)[-1] if self.path else ""
         }
