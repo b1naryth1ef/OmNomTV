@@ -101,7 +101,7 @@ class PirateBay(object):
                 rank += 1
 
             for term in config['torrents']['terms']:
-                if term in item.name:
+                if term in item.title:
                     log.debug("\tHas search term `%s`" % term)
                     rank += 1
 
